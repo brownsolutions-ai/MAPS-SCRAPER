@@ -6,6 +6,7 @@ let db=null;
 let rerender=()=>{};
 let notify=()=>{};
 const LOCAL_CACHE_KEY='mapa-leads-public-cache-v1';
+const LOCAL_MIGRATION_KEY='mapa-leads-public-cache-migrated-v1';
 
 function readLocal(){
   try{
@@ -29,6 +30,25 @@ function hydrateLocal(state){
   return true;
 }
 
+function localMigrationDone(){try{return localStorage.getItem(LOCAL_MIGRATION_KEY)==='1';}catch{return false;}}
+function markLocalMigrationDone(){try{localStorage.setItem(LOCAL_MIGRATION_KEY,'1');}catch{}}
+
+async function migrateLocalToRemote(cached){
+  if(!cached?.leads?.length||localMigrationDone())return false;
+  const now=new Date().toISOString();
+  const records=cached.leads.map(l=>({
+    business_key:businessKey(l),name:l.name,city:l.city||null,state:l.state||null,address:l.address||null,
+    phone:l.phone||null,website:l.website||null,rating:l.rating??null,reviews:l.reviews??null,
+    category:l.category||null,niche:l.niche||classifyNiche(l),maps_url:l.maps_url||null,
+    place_id:l.place_id||null,instagram:l.instagram||null,email:l.email||null,status:l.status||'new',
+    notes:l.notes||'',favorite:!!l.favorite,follow_up_at:l.follow_up_at||null,updated_at:l.updated_at||now
+  }));
+  for(let i=0;i<records.length;i+=300){const {error}=await db.from('companies').upsert(records.slice(i,i+300),{onConflict:'business_key'});if(error)throw new Error(errMessage(error));}
+  const batches=(cached.imports||[]).map(b=>({filename:b.filename||'Importação anterior',source_rows:b.source_rows||0,created_count:b.created_count||0,updated_count:b.updated_count||0,skipped_count:b.skipped_count||0,created_at:b.created_at||now}));
+  if(batches.length){const {error}=await db.from('import_batches').insert(batches);if(error)throw new Error(errMessage(error));}
+  markLocalMigrationDone();return true;
+}
+
 const errMessage=error=>{
   const m=String(error?.message||error||'Erro desconhecido');
   if(/relation .* does not exist|schema cache|could not find the table/i.test(m))return 'As tabelas do CRM ainda não foram criadas no Supabase. Abra Configurações e execute o arquivo schema.sql.';
@@ -48,6 +68,7 @@ export async function initialize(state,onRender,onToast){
 
 export async function loadAll(state){
   if(!db)return;
+  const cached=readLocal();
   state.loading=true;rerender();
   let companies,events,imports;
   try{
@@ -62,6 +83,7 @@ export async function loadAll(state){
   state.loading=false;
   const error=companies.error||events.error||imports.error;
   if(error){state.demo=true;hydrateLocal(state);rerender();throw new Error(errMessage(error));}
+  if(await migrateLocalToRemote(cached)){notify('Leads deste computador sincronizados com a base compartilhada.');return loadAll(state);}
   state.demo=false;state.leads=(companies.data||[]).map(l=>({...l,niche:l.niche||classifyNiche(l)}));state.events=events.data||[];state.imports=imports.data||[];rerender();
   saveLocal(state);
 }
