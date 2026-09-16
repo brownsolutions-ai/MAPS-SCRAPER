@@ -114,7 +114,7 @@ export async function updateRecords(state,ids,patch){
   const now=new Date().toISOString();
   state.leads=state.leads.map(l=>ids.includes(l.id)?{...l,...patch,updated_at:now}:l);
   if(state.demo){saveLocal(state);rerender();notify('Alteração salva neste navegador. Execute o schema para compartilhar com outras pessoas.');return;}
-  const clean=Object.fromEntries(Object.entries(patch).filter(([k])=>['status','favorite','notes','follow_up_at'].includes(k)));
+  const clean=Object.fromEntries(Object.entries(patch).filter(([k])=>['status','favorite','notes','follow_up_at','niche'].includes(k)));
   clean.updated_at=now;
   const {error}=await db.from('companies').update(clean).in('id',ids);
   if(error){state.leads=state.leads.map(l=>before.has(l.id)?before.get(l.id):l);rerender();throw new Error(errMessage(error));}
@@ -122,6 +122,7 @@ export async function updateRecords(state,ids,patch){
   for(const id of ids){
     const old=before.get(id);if(!old)continue;
     if(patch.status&&patch.status!==old.status)events.push({company_id:id,event_type:'status_changed',from_status:old.status,to_status:patch.status,description:'Status atualizado'});
+    if(patch.niche&&patch.niche!==old.niche)events.push({company_id:id,event_type:'niche_changed',description:'Nicho atualizado manualmente'});
     if(Object.hasOwn(patch,'notes')&&patch.notes!==old.notes)events.push({company_id:id,event_type:'note_updated',description:'Notas atualizadas'});
     if(Object.hasOwn(patch,'follow_up_at')&&patch.follow_up_at!==old.follow_up_at)events.push({company_id:id,event_type:'follow_up_scheduled',description:patch.follow_up_at?'Próximo contato agendado':'Agendamento removido'});
   }
@@ -139,7 +140,7 @@ export async function importCompanies(state,plan,filename,country='BR'){
   const records=plan.leads.map(incoming=>{
     const existing=state.leads.find(x=>sameCompany(x,incoming));
     const merged=existing?mergeCompany(existing,incoming):incoming;
-    return {id:companyId(existing?.id),country_code:country,business_key:businessKey({...merged,country_code:country}),name:merged.name,city:merged.city||null,state:merged.state||null,address:merged.address||null,phone:merged.phone||null,website:merged.website||null,rating:merged.rating,reviews:merged.reviews,category:merged.category||null,niche:merged.niche||classifyNiche(merged),maps_url:merged.maps_url||null,place_id:merged.place_id||null,instagram:merged.instagram||null,email:merged.email||null,status:existing?.status||'new',notes:existing?.notes||'',favorite:existing?.favorite||false,follow_up_at:existing?.follow_up_at||null,updated_at:now};
+    return {id:companyId(existing?.id),country_code:country,business_key:businessKey({...merged,country_code:country}),name:merged.name,city:merged.city||null,state:merged.state||null,address:merged.address||null,phone:merged.phone||null,website:merged.website||null,rating:merged.rating,reviews:merged.reviews,category:merged.category||null,niche:existing?.niche||merged.niche||classifyNiche(merged),maps_url:merged.maps_url||null,place_id:merged.place_id||null,instagram:merged.instagram||null,email:merged.email||null,status:existing?.status||'new',notes:existing?.notes||'',favorite:existing?.favorite||false,follow_up_at:existing?.follow_up_at||null,updated_at:now};
   }).map(r=>Object.fromEntries(Object.entries(r).filter(([,v])=>v!==undefined)));
   for(let i=0;i<records.length;i+=300){const {error}=await db.from('companies').upsert(records.slice(i,i+300),{onConflict:'business_key'});if(error)throw new Error(errMessage(error));}
   const batch={country_code:country,filename,source_rows:plan.leads.length+plan.invalid+plan.duplicates,created_count:plan.created,updated_count:plan.updated,skipped_count:plan.invalid+plan.duplicates};

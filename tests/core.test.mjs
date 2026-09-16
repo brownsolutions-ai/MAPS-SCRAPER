@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {siteType,phoneNumber,autoMap,toLead,planImport,sameCompany,exportCsv,filterLeads,classifyNiche} from '../dist/core.mjs';
+import {siteType,phoneNumber,autoMap,toLead,planImport,sameCompany,mergeCompany,exportCsv,filterLeads,classifyNiche} from '../dist/core.mjs';
 
 test('classifica presença digital',()=>{
   assert.equal(siteType(''),'missing');
@@ -57,4 +57,10 @@ test('separa empresas e importações por país',()=>{
   const mapping=autoMap(['Nome da empresa','Cidade']);
   const plan=planImport([['Empresa Europa','Dublin']],mapping,leads,'IE');
   assert.equal(plan.leads[0].country_code,'IE');
+});
+
+test('preserva nicho escolhido manualmente ao atualizar empresa',()=>{
+  const existing={name:'Studio Bela',city:'São Paulo',niche:'aesthetics'};
+  const incoming={name:'Studio Bela',city:'São Paulo',niche:'beauty',website:'studiobela.com.br'};
+  assert.equal(mergeCompany(existing,incoming).niche,'aesthetics');
 });
