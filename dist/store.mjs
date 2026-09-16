@@ -49,11 +49,16 @@ export async function initialize(state,onRender,onToast){
 export async function loadAll(state){
   if(!db)return;
   state.loading=true;rerender();
-  const [companies,events,imports]=await Promise.all([
-    db.from('companies').select('*').order('created_at',{ascending:false}),
-    db.from('lead_events').select('*').order('created_at',{ascending:false}),
-    db.from('import_batches').select('*').order('created_at',{ascending:false})
-  ]);
+  let companies,events,imports;
+  try{
+    [companies,events,imports]=await Promise.all([
+      db.from('companies').select('*').order('created_at',{ascending:false}),
+      db.from('lead_events').select('*').order('created_at',{ascending:false}),
+      db.from('import_batches').select('*').order('created_at',{ascending:false})
+    ]);
+  }catch(error){
+    state.loading=false;state.demo=true;hydrateLocal(state);rerender();throw new Error(errMessage(error));
+  }
   state.loading=false;
   const error=companies.error||events.error||imports.error;
   if(error){state.demo=true;hydrateLocal(state);rerender();throw new Error(errMessage(error));}
