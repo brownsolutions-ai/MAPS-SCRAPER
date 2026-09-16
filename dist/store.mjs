@@ -5,6 +5,29 @@ import {businessKey,mergeCompany,sameCompany,classifyNiche} from './core.mjs';
 let db=null;
 let rerender=()=>{};
 let notify=()=>{};
+const LOCAL_CACHE_KEY='mapa-leads-public-cache-v1';
+
+function readLocal(){
+  try{
+    const raw=localStorage.getItem(LOCAL_CACHE_KEY);
+    if(!raw)return null;
+    const parsed=JSON.parse(raw);
+    return parsed&&Array.isArray(parsed.leads)?parsed:null;
+  }catch{return null;}
+}
+
+function saveLocal(state){
+  try{localStorage.setItem(LOCAL_CACHE_KEY,JSON.stringify({leads:state.leads||[],events:state.events||[],imports:state.imports||[]}));}catch{}
+}
+
+function hydrateLocal(state){
+  const cached=readLocal();
+  if(!cached)return false;
+  state.leads=cached.leads.map(l=>({...l,niche:l.niche||classifyNiche(l)}));
+  state.events=cached.events||[];
+  state.imports=cached.imports||[];
+  return true;
+}
 
 const errMessage=error=>{
   const m=String(error?.message||error||'Erro desconhecido');
@@ -19,6 +42,7 @@ export function client(){return db;}
 export async function initialize(state,onRender,onToast){
   rerender=onRender;notify=onToast;
   db=createClient(SUPABASE_URL,SUPABASE_PUBLISHABLE_KEY,{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:true}});
+  hydrateLocal(state);rerender();
   await loadAll(state);
 }
 
@@ -32,8 +56,9 @@ export async function loadAll(state){
   ]);
   state.loading=false;
   const error=companies.error||events.error||imports.error;
-  if(error){state.demo=true;state.leads=[];state.events=[];state.imports=[];rerender();throw new Error(errMessage(error));}
+  if(error){state.demo=true;hydrateLocal(state);rerender();throw new Error(errMessage(error));}
   state.demo=false;state.leads=(companies.data||[]).map(l=>({...l,niche:l.niche||classifyNiche(l)}));state.events=events.data||[];state.imports=imports.data||[];rerender();
+  saveLocal(state);
 }
 
 export async function signIn(state,email,password){
@@ -58,7 +83,7 @@ export async function updateRecords(state,ids,patch){
   const before=new Map(state.leads.filter(l=>ids.includes(l.id)).map(l=>[l.id,{...l}]));
   const now=new Date().toISOString();
   state.leads=state.leads.map(l=>ids.includes(l.id)?{...l,...patch,updated_at:now}:l);
-  if(state.demo){rerender();notify('Alteração feita na demonstração. Configure o banco para salvar.');return;}
+  if(state.demo){saveLocal(state);rerender();notify('Alteração salva neste navegador. Execute o schema para compartilhar com outras pessoas.');return;}
   const clean=Object.fromEntries(Object.entries(patch).filter(([k])=>['status','favorite','notes','follow_up_at'].includes(k)));
   clean.updated_at=now;
   const {error}=await db.from('companies').update(clean).in('id',ids);
@@ -79,7 +104,7 @@ export async function importCompanies(state,plan,filename){
   if(state.demo){
     const current=[...state.leads];
     for(const incoming of plan.leads){const i=current.findIndex(x=>sameCompany(x,incoming));if(i>=0)current[i]=mergeCompany(current[i],incoming);else current.unshift({...incoming,id:crypto.randomUUID(),status:'new',notes:'',favorite:false,follow_up_at:null,created_at:now,updated_at:now});}
-    state.leads=current;state.imports.unshift({id:crypto.randomUUID(),filename,created_count:plan.created,updated_count:plan.updated,skipped_count:plan.invalid+plan.duplicates,created_at:now});rerender();return {saved:false};
+    state.leads=current;state.imports.unshift({id:crypto.randomUUID(),filename,created_count:plan.created,updated_count:plan.updated,skipped_count:plan.invalid+plan.duplicates,created_at:now});saveLocal(state);rerender();return {saved:false};
   }
   const records=plan.leads.map(incoming=>{
     const existing=state.leads.find(x=>sameCompany(x,incoming));
