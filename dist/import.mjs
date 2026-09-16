@@ -1,16 +1,18 @@
-import {FIELDS,autoMap,planImport,escape as esc} from './core.mjs';
+import {FIELDS,COUNTRIES,autoMap,planImport,escape as esc} from './core.mjs';
 import {icon} from './icons.mjs';
 import {importCompanies} from './store.mjs';
 
 export function showImport({state,toast,render,navigate}){
   const modal=document.querySelector('#modal');
-  let book=null,rows=[],headers=[],mapping={},filename='';
-  modal.innerHTML=`<div class="modal-header"><div><h2 id="modal-title">Importar planilha</h2><p>Excel, CSV ou TSV · até 25 MB</p></div><button class="icon-button" data-close aria-label="Fechar">${icon('close')}</button></div><div class="modal-body"><div class="drop-zone" id="drop"><span class="upload-icon">${icon('upload')}</span><strong>Arraste sua planilha para cá</strong><p>O CRM mostra uma prévia antes de salvar qualquer empresa.</p><label for="file">Selecionar arquivo</label><input id="file" type="file" accept=".xlsx,.xls,.csv,.tsv" hidden></div></div><div class="modal-footer"><span class="small muted">Empresas repetidas preservam status, notas e follow-up.</span><button data-close>Cancelar</button></div>`;
+  let book=null,rows=[],headers=[],mapping={},filename='',country=state.country||'BR';
+  const countryOptions=()=>Object.entries(COUNTRIES).map(([code,name])=>`<option value="${code}" ${country===code?'selected':''}>${esc(name)}</option>`).join('');
+  modal.innerHTML=`<div class="modal-header"><div><h2 id="modal-title">Importar planilha</h2><p>Excel, CSV ou TSV · até 25 MB</p></div><button class="icon-button" data-close aria-label="Fechar">${icon('close')}</button></div><div class="modal-body"><div class="field"><label for="import-country">País desta lista</label><select id="import-country">${countryOptions()}</select><small>Todos os leads desta planilha serão organizados na área escolhida.</small></div><div class="drop-zone" id="drop"><span class="upload-icon">${icon('upload')}</span><strong>Arraste sua planilha para cá</strong><p>O CRM mostra uma prévia antes de salvar qualquer empresa.</p><label for="file">Selecionar arquivo</label><input id="file" type="file" accept=".xlsx,.xls,.csv,.tsv" hidden></div></div><div class="modal-footer"><span class="small muted">Empresas repetidas preservam status, notas e follow-up.</span><button data-close>Cancelar</button></div>`;
   modal.showModal();
   const close=()=>modal.close();
   modal.querySelectorAll('[data-close]').forEach(b=>b.onclick=close);
   modal.oncancel=()=>{};
   const drop=modal.querySelector('#drop'),fileInput=modal.querySelector('#file');
+  modal.querySelector('#import-country').onchange=e=>{country=e.target.value;};
   for(const ev of ['dragenter','dragover'])drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.add('drag');});
   for(const ev of ['dragleave','drop'])drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.remove('drag');});
   drop.addEventListener('drop',e=>readFile(e.dataTransfer.files[0]));
@@ -22,7 +24,7 @@ export function showImport({state,toast,render,navigate}){
   }
   function chooseSheet(){
     const names=book.SheetNames;
-    modal.querySelector('.modal-body').innerHTML=`<div class="file-details">${icon('file')}<div><strong>${esc(filename)}</strong><small>${names.length} aba(s) encontrada(s)</small></div><button data-change>Trocar arquivo</button></div><div class="field"><label for="sheet">Aba que contém as empresas</label><select id="sheet">${names.map(n=>`<option value="${esc(n)}">${esc(n)}</option>`).join('')}</select></div><div class="notice blue">A primeira linha da aba será usada como cabeçalho das colunas.</div>`;
+    modal.querySelector('.modal-body').innerHTML=`<div class="file-details">${icon('file')}<div><strong>${esc(filename)}</strong><small>${names.length} aba(s) · ${esc(COUNTRIES[country])}</small></div><button data-change>Trocar arquivo</button></div><div class="field"><label for="sheet">Aba que contém as empresas</label><select id="sheet">${names.map(n=>`<option value="${esc(n)}">${esc(n)}</option>`).join('')}</select></div><div class="notice blue">A primeira linha da aba será usada como cabeçalho das colunas.</div>`;
     modal.querySelector('.modal-footer').innerHTML=`<button data-close>Cancelar</button><button class="primary" data-next>Revisar colunas ${icon('arrow')}</button>`;
     modal.querySelector('[data-change]').onclick=()=>{modal.close();showImport({state,toast,render,navigate});};
     modal.querySelector('[data-close]').onclick=close;
@@ -40,11 +42,11 @@ export function showImport({state,toast,render,navigate}){
     modal.querySelector('[data-preview]').onclick=()=>{modal.querySelectorAll('[data-map]').forEach(s=>mapping[s.dataset.map]=Number(s.value));if(mapping.name<0){toast('Escolha a coluna com o nome da empresa.');return;}showPreview();};
   }
   function showPreview(){
-    const plan=planImport(rows,mapping,state.leads);
+    const plan=planImport(rows,mapping,state.leads,country);
     if(!plan.leads.length){toast('Nenhuma empresa válida foi encontrada.');return;}
-    modal.querySelector('.modal-body').innerHTML=`<h3>Pronto para importar</h3><div class="import-summary"><div><strong>${plan.created}</strong><span>novas empresas</span></div><div><strong>${plan.updated}</strong><span>já existentes</span></div><div><strong>${plan.invalid+plan.duplicates}</strong><span>linhas ignoradas</span></div></div>${state.demo?`<div class="notice">Você ainda está na demonstração. A importação funcionará nesta sessão, mas só ficará salva depois de entrar na sua conta.</div>`:''}<h3 style="margin:22px 0 10px">Prévia</h3><div class="preview-table"><table><thead><tr><th>EMPRESA</th><th>CIDADE</th><th>TELEFONE</th><th>SITE</th></tr></thead><tbody>${plan.leads.slice(0,5).map(l=>`<tr><td>${esc(l.name)}</td><td>${esc(l.city)}</td><td>${esc(l.phone)}</td><td>${esc(l.website||'Não informado')}</td></tr>`).join('')}</tbody></table></div>`;
+    modal.querySelector('.modal-body').innerHTML=`<h3>Pronto para importar em ${esc(COUNTRIES[country])}</h3><div class="import-summary"><div><strong>${plan.created}</strong><span>novas empresas</span></div><div><strong>${plan.updated}</strong><span>já existentes</span></div><div><strong>${plan.invalid+plan.duplicates}</strong><span>linhas ignoradas</span></div></div>${state.demo?`<div class="notice">Você ainda está na demonstração. A importação funcionará nesta sessão, mas só ficará salva depois de entrar na sua conta.</div>`:''}<h3 style="margin:22px 0 10px">Prévia</h3><div class="preview-table"><table><thead><tr><th>EMPRESA</th><th>CIDADE</th><th>TELEFONE</th><th>SITE</th></tr></thead><tbody>${plan.leads.slice(0,5).map(l=>`<tr><td>${esc(l.name)}</td><td>${esc(l.city)}</td><td>${esc(l.phone)}</td><td>${esc(l.website||'Não informado')}</td></tr>`).join('')}</tbody></table></div>`;
     modal.querySelector('.modal-footer').innerHTML=`<button data-back>${icon('left')} Corrigir colunas</button><button class="primary" data-confirm>Importar ${plan.leads.length.toLocaleString('pt-BR')} empresas</button>`;
     modal.querySelector('[data-back]').onclick=showMapping;
-    modal.querySelector('[data-confirm]').onclick=async e=>{const btn=e.currentTarget;btn.disabled=true;btn.innerHTML='<span class="loader"></span> Importando';try{const result=await importCompanies(state,plan,filename);modal.close();navigate('all');toast(result.saved?'Planilha importada e salva no Supabase.':'Planilha importada nesta demonstração. Conecte sua conta para salvar.');}catch(err){btn.disabled=false;btn.textContent='Tentar novamente';toast(err.message);}};
+    modal.querySelector('[data-confirm]').onclick=async e=>{const btn=e.currentTarget;btn.disabled=true;btn.innerHTML='<span class="loader"></span> Importando';try{const result=await importCompanies(state,plan,filename,country);state.country=country;modal.close();navigate('all');toast(result.saved?`Planilha importada em ${COUNTRIES[country]} e salva no Supabase.`:'Planilha importada nesta demonstração. Conecte sua conta para salvar.');}catch(err){btn.disabled=false;btn.textContent='Tentar novamente';toast(err.message);}};
   }
 }
