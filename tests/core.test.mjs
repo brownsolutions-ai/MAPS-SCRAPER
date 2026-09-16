@@ -39,3 +39,9 @@ test('classifica nichos automaticamente e permite separar a lista',()=>{
   const leads=[{name:'Clínica A',category:'Estética',niche:'aesthetics'},{name:'Imóveis B',category:'Imobiliária',niche:'real_estate'}];
   assert.equal(filterLeads(leads,{},'niche:aesthetics').length,1);
 });
+
+test('remove descartados da lista geral e mantém a área de descartados',()=>{
+  const leads=[{name:'Ativa',status:'new'},{name:'Arquivada',status:'discarded'}];
+  assert.deepEqual(filterLeads(leads,{},'all').map(l=>l.name),['Ativa']);
+  assert.deepEqual(filterLeads(leads,{},'discarded').map(l=>l.name),['Arquivada']);
+});
