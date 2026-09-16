@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {siteType,phoneNumber,autoMap,toLead,planImport,sameCompany,exportCsv,filterLeads} from '../dist/core.mjs';
+import {siteType,phoneNumber,autoMap,toLead,planImport,sameCompany,exportCsv,filterLeads,classifyNiche} from '../dist/core.mjs';
 
 test('classifica presença digital',()=>{
   assert.equal(siteType(''),'missing');
@@ -31,4 +31,11 @@ test('protege CSV contra fórmulas e filtra sem site',()=>{
   const lead={name:'=IMPORTXML("x")',city:'SP',website:'',status:'new'};
   assert.match(exportCsv([lead]),/"'=IMPORTXML/);
   assert.equal(filterLeads([lead],{site:'without'},'all').length,1);
+});
+
+test('classifica nichos automaticamente e permite separar a lista',()=>{
+  assert.equal(classifyNiche({name:'Clínica Harmonia',category:'Clínica de estética'}),'aesthetics');
+  assert.equal(classifyNiche({name:'Imóveis Brasil',category:'Imobiliária'}),'real_estate');
+  const leads=[{name:'Clínica A',category:'Estética',niche:'aesthetics'},{name:'Imóveis B',category:'Imobiliária',niche:'real_estate'}];
+  assert.equal(filterLeads(leads,{},'niche:aesthetics').length,1);
 });
