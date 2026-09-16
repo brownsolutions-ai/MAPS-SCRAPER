@@ -7,6 +7,9 @@ let rerender=()=>{};
 let notify=()=>{};
 const LOCAL_CACHE_KEY='mapa-leads-public-cache-v1';
 const LOCAL_MIGRATION_KEY='mapa-leads-public-cache-migrated-v1';
+const UUID_RE=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function companyId(value){return UUID_RE.test(String(value||''))?value:crypto.randomUUID();}
 
 function readLocal(){
   try{
@@ -37,7 +40,7 @@ async function migrateLocalToRemote(cached){
   if(!cached?.leads?.length||localMigrationDone())return false;
   const now=new Date().toISOString();
   const records=cached.leads.map(l=>({
-    business_key:businessKey(l),name:l.name,city:l.city||null,state:l.state||null,address:l.address||null,
+    id:companyId(l.id),business_key:businessKey(l),name:l.name,city:l.city||null,state:l.state||null,address:l.address||null,
     phone:l.phone||null,website:l.website||null,rating:l.rating??null,reviews:l.reviews??null,
     category:l.category||null,niche:l.niche||classifyNiche(l),maps_url:l.maps_url||null,
     place_id:l.place_id||null,instagram:l.instagram||null,email:l.email||null,status:l.status||'new',
@@ -136,7 +139,7 @@ export async function importCompanies(state,plan,filename){
   const records=plan.leads.map(incoming=>{
     const existing=state.leads.find(x=>sameCompany(x,incoming));
     const merged=existing?mergeCompany(existing,incoming):incoming;
-    return {id:existing?.id,business_key:businessKey(merged),name:merged.name,city:merged.city||null,state:merged.state||null,address:merged.address||null,phone:merged.phone||null,website:merged.website||null,rating:merged.rating,reviews:merged.reviews,category:merged.category||null,niche:merged.niche||classifyNiche(merged),maps_url:merged.maps_url||null,place_id:merged.place_id||null,instagram:merged.instagram||null,email:merged.email||null,status:existing?.status||'new',notes:existing?.notes||'',favorite:existing?.favorite||false,follow_up_at:existing?.follow_up_at||null,updated_at:now};
+    return {id:companyId(existing?.id),business_key:businessKey(merged),name:merged.name,city:merged.city||null,state:merged.state||null,address:merged.address||null,phone:merged.phone||null,website:merged.website||null,rating:merged.rating,reviews:merged.reviews,category:merged.category||null,niche:merged.niche||classifyNiche(merged),maps_url:merged.maps_url||null,place_id:merged.place_id||null,instagram:merged.instagram||null,email:merged.email||null,status:existing?.status||'new',notes:existing?.notes||'',favorite:existing?.favorite||false,follow_up_at:existing?.follow_up_at||null,updated_at:now};
   }).map(r=>Object.fromEntries(Object.entries(r).filter(([,v])=>v!==undefined)));
   for(let i=0;i<records.length;i+=300){const {error}=await db.from('companies').upsert(records.slice(i,i+300),{onConflict:'business_key'});if(error)throw new Error(errMessage(error));}
   const batch={filename,source_rows:plan.leads.length+plan.invalid+plan.duplicates,created_count:plan.created,updated_count:plan.updated,skipped_count:plan.invalid+plan.duplicates};

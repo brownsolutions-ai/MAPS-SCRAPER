@@ -51,6 +51,7 @@ create table if not exists public.import_batches (
 );
 
 alter table public.companies add column if not exists niche text not null default 'other';
+alter table public.companies alter column id set default gen_random_uuid();
 alter table public.companies alter column owner_id drop not null;
 alter table public.lead_events alter column owner_id drop not null;
 alter table public.import_batches alter column owner_id drop not null;
