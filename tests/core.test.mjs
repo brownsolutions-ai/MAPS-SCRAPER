@@ -37,6 +37,9 @@ test('protege CSV contra fórmulas e filtra sem site',()=>{
 test('classifica nichos automaticamente e permite separar a lista',()=>{
   assert.equal(classifyNiche({name:'Clínica Harmonia',category:'Clínica de estética'}),'aesthetics');
   assert.equal(classifyNiche({name:'Imóveis Brasil',category:'Imobiliária'}),'real_estate');
+  assert.equal(classifyNiche({name:'Smash House',category:'Hamburgueria'}),'hamburgers');
+  assert.equal(classifyNiche({name:'Bella Napoli',category:'Pizzaria'}),'pizzerias');
+  assert.equal(classifyNiche({name:'Sabor da Casa',category:'Restaurante'}),'restaurants');
   const leads=[{name:'Clínica A',category:'Estética',niche:'aesthetics'},{name:'Imóveis B',category:'Imobiliária',niche:'real_estate'}];
   assert.equal(filterLeads(leads,{},'niche:aesthetics').length,1);
 });

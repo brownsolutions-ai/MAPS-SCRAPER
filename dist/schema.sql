@@ -15,7 +15,7 @@ create table if not exists public.companies (
   rating numeric(2,1) check (rating is null or (rating >= 0 and rating <= 5)),
   reviews integer check (reviews is null or reviews >= 0),
   category text,
-  niche text not null default 'other' check (niche in ('aesthetics','real_estate','health','beauty','food','services','retail','other')),
+  niche text not null default 'other' check (niche in ('aesthetics','real_estate','health','beauty','hamburgers','pizzerias','restaurants','food','services','retail','other')),
   maps_url text,
   place_id text,
   instagram text,
@@ -53,6 +53,8 @@ create table if not exists public.import_batches (
 );
 
 alter table public.companies add column if not exists niche text not null default 'other';
+alter table public.companies drop constraint if exists companies_niche_check;
+alter table public.companies add constraint companies_niche_check check (niche in ('aesthetics','real_estate','health','beauty','hamburgers','pizzerias','restaurants','food','services','retail','other'));
 alter table public.companies add column if not exists country_code text not null default 'BR';
 alter table public.companies alter column id set default gen_random_uuid();
 alter table public.companies alter column owner_id drop not null;
