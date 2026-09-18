@@ -114,7 +114,7 @@ export async function updateRecords(state,ids,patch){
   const now=new Date().toISOString();
   state.leads=state.leads.map(l=>ids.includes(l.id)?{...l,...patch,updated_at:now}:l);
   if(state.demo){saveLocal(state);rerender();notify('Alteração salva neste navegador. Execute o schema para compartilhar com outras pessoas.');return;}
-  const clean=Object.fromEntries(Object.entries(patch).filter(([k])=>['status','favorite','notes','follow_up_at','niche'].includes(k)));
+  const clean=Object.fromEntries(Object.entries(patch).filter(([k])=>['status','favorite','notes','follow_up_at','niche','state'].includes(k)));
   clean.updated_at=now;
   const {error}=await db.from('companies').update(clean).in('id',ids);
   if(error){state.leads=state.leads.map(l=>before.has(l.id)?before.get(l.id):l);rerender();throw new Error(errMessage(error));}
@@ -122,11 +122,13 @@ export async function updateRecords(state,ids,patch){
   for(const id of ids){
     const old=before.get(id);if(!old)continue;
     if(patch.status&&patch.status!==old.status)events.push({company_id:id,event_type:'status_changed',from_status:old.status,to_status:patch.status,description:'Status atualizado'});
+    if(Object.hasOwn(patch,'state')&&patch.state!==old.state)events.push({company_id:id,event_type:'region_changed',description:patch.state?'Estado / região atualizado':'Estado / região removido'});
     if(patch.niche&&patch.niche!==old.niche)events.push({company_id:id,event_type:'niche_changed',description:'Nicho atualizado manualmente'});
     if(Object.hasOwn(patch,'notes')&&patch.notes!==old.notes)events.push({company_id:id,event_type:'note_updated',description:'Notas atualizadas'});
     if(Object.hasOwn(patch,'follow_up_at')&&patch.follow_up_at!==old.follow_up_at)events.push({company_id:id,event_type:'follow_up_scheduled',description:patch.follow_up_at?'Próximo contato agendado':'Agendamento removido'});
   }
   if(events.length){const {data,error:eventError}=await db.from('lead_events').insert(events).select();if(!eventError)state.events=[...(data||[]),...state.events];}
+  saveLocal(state);
   notify(ids.length>1?'Leads atualizados.':'Lead atualizado.');
 }
 
