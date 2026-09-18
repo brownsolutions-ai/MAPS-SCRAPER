@@ -1,6 +1,7 @@
 import {createClient} from './vendor/supabase.js';
 import {SUPABASE_URL,SUPABASE_PUBLISHABLE_KEY} from './config.mjs';
 import {businessKey,mergeCompany,sameCompany,classifyNiche,leadCountry} from './core.mjs';
+import {REGIONS} from './regions.mjs';
 
 let db=null;
 let rerender=()=>{};
@@ -61,6 +62,21 @@ const errMessage=error=>{
 };
 
 export function client(){return db;}
+
+export async function moveRecords(state,ids,country,region){
+  if(!db||state.demo||state.loading)throw new Error('Aguarde a conexão com o banco para mover leads.');
+  if(!REGIONS[country]||(region&&!REGIONS[country].some(r=>r.code===region)))throw new Error('Escolha um país e uma região válidos.');
+  const uniqueIds=[...new Set(ids)];
+  if(!uniqueIds.length)throw new Error('Selecione pelo menos um lead.');
+  const {data,error}=await db.rpc('move_crm_leads',{p_ids:uniqueIds,p_country:country,p_state:region||null});
+  if(error)throw new Error(errMessage(error));
+  const moved=new Map((data?.moved||[]).map(l=>[l.id,l]));
+  state.leads=state.leads.map(l=>moved.get(l.id)||l);
+  const {data:events,error:eventError}=await db.from('lead_events').select('*').in('company_id',uniqueIds).order('created_at',{ascending:false});
+  if(!eventError){state.events=[...(events||[]),...state.events.filter(e=>!uniqueIds.includes(e.company_id))];}
+  saveLocal(state);
+  return {moved:data?.moved||[],skipped:data?.skipped||[]};
+}
 
 export async function initialize(state,onRender,onToast){
   rerender=onRender;notify=onToast;
