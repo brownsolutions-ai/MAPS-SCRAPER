@@ -1,5 +1,5 @@
 import {resolveRegion,regionMatches} from './regions.mjs';
-export const STATUS={new:'Novo',contacted:'Contatado',replied:'Respondeu',followup:'Follow-up',discarded:'Descartado'};
+export const STATUS={new:'Novo',contacted:'Contatado',retry:'Tentar novamente',negotiation:'Negociação / Call',won:'Fechado',discarded:'Descartado',replied:'Respondeu',followup:'Follow-up'};
 export const SITE={missing:'Não informado',social:'Só redes sociais',platform:'Plataforma externa',own:'Site próprio',review:'Verificar link'};
 export const NICHES={aesthetics:'Clínicas de estética',real_estate:'Imobiliárias',health:'Saúde e clínicas',beauty:'Beleza',hamburgers:'Hamburguerias',pizzerias:'Pizzarias',restaurants:'Restaurantes',food:'Alimentação',services:'Serviços profissionais',retail:'Comércio',other:'Outros'};
 export const COUNTRIES={BR:'Brasil',PT:'Portugal',ES:'Espanha',IT:'Itália',GB:'Reino Unido',DE:'Alemanha',NL:'Países Baixos',IE:'Irlanda',CH:'Suíça',AT:'Áustria',US:'Estados Unidos'};

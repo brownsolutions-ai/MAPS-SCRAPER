@@ -93,8 +93,7 @@ grant select, insert, update, delete on public.import_batches to anon;
 grant select, insert, update, delete on public.companies to authenticated;
 grant select, insert, update, delete on public.lead_events to authenticated;
 grant select, insert, update, delete on public.import_batches to authenticated;
-grant usage, select on all sequences in schema public to authenticated;
-grant usage, select on all sequences in schema public to anon;
+grant usage, select on sequence public.lead_events_id_seq, public.import_batches_id_seq to authenticated, anon;
 
 -- Expandir os países sem modificar empresas existentes.
 alter table public.companies drop constraint if exists companies_country_code_check;

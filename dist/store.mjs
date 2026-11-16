@@ -3,12 +3,13 @@ import {SUPABASE_URL,SUPABASE_PUBLISHABLE_KEY} from './config.mjs';
 import {businessKey,mergeCompany,sameCompany,classifyNiche,leadCountry} from './core.mjs';
 import {REGIONS} from './regions.mjs';
 import {prepareImportRecords} from './import-records.mjs';
+import {prepareManualLead} from './social-core.mjs';
 
 let db=null;
 let rerender=()=>{};
 let notify=()=>{};
 const LOCAL_CACHE_KEY='mapa-leads-public-cache-v1';
-const LOCAL_MIGRATION_KEY='mapa-leads-public-cache-migrated-v1';
+const LOCAL_MIGRATION_KEY='mapa-leads-public-cache-migrated-v1:'+SUPABASE_URL;
 function readLocal(){
   try{
     const raw=localStorage.getItem(LOCAL_CACHE_KEY);
@@ -52,6 +53,7 @@ async function migrateLocalToRemote(cached){
 
 const errMessage=error=>{
   const m=String(error?.message||error||'Erro desconhecido');
+  if(/failed to fetch|fetch failed|networkerror|network request failed/i.test(m))return 'Não foi possível acessar o endereço do Supabase. Confira a conexão, a URL e se o projeto está ativo.';
   if(/relation .* does not exist|schema cache|could not find the table/i.test(m))return 'As tabelas do CRM ainda não foram criadas no Supabase. Abra Configurações e execute o arquivo schema.sql.';
   if(/invalid login credentials/i.test(m))return 'E-mail ou senha incorretos.';
   if(/email not confirmed/i.test(m))return 'Confirme seu e-mail antes de entrar.';
@@ -59,6 +61,45 @@ const errMessage=error=>{
 };
 
 export function client(){return db;}
+
+function requireSocial(state){
+  if(!db||state.demo||state.loading)throw new Error('Sem conexão com o banco. Reconecte para salvar.');
+  if(!state.socialReady)throw new Error('Atualize o banco com social-leads.sql para ativar os leads sociais.');
+}
+
+export async function saveManualLead(state,input,id){
+  requireSocial(state);
+  const record=prepareManualLead(input);
+  if(record.lead_category_id&&!state.categories.some(c=>c.id===record.lead_category_id))throw new Error('Escolha uma categoria existente.');
+  const existing=state.leads.find(l=>l.id===id);
+  if(id&&!existing)throw new Error('Lead não encontrado. Atualize a base.');
+  const duplicate=state.leads.find(l=>l.id!==id&&sameCompany(l,record));
+  if(duplicate)throw new Error('Essa empresa já existe na base. Use a busca para enviá-la à fila de contato.');
+  // A identidade usada por importações e histórico permanece estável na edição.
+  if(existing)record.business_key=existing.business_key;
+  record.updated_at=new Date().toISOString();
+  const query=id?db.from('companies').update(record).eq('id',id):db.from('companies').insert(record);
+  const {data,error}=await query.select().single();
+  if(error)throw new Error(error.code==='23505'?'Essa empresa já foi cadastrada. Atualize a base.':errMessage(error));
+  state.leads=id?state.leads.map(l=>l.id===id?data:l):[data,...state.leads];
+  if(existing&&existing.status!==data.status){
+    const {data:events,error:eventError}=await db.from('lead_events').insert({company_id:id,event_type:'status_changed',from_status:existing.status,to_status:data.status,description:'Status atualizado'}).select();
+    if(!eventError)state.events=[...(events||[]),...state.events];
+  }
+  saveLocal(state);
+  notify(id?'Lead atualizado no banco.':'Lead adicionado ao banco.');
+  return data;
+}
+
+export async function createCategory(state,value){
+  requireSocial(state);
+  const name=String(value||'').trim();
+  if(!name||name.length>60)throw new Error('Use entre 1 e 60 caracteres para a categoria.');
+  const {data,error}=await db.from('lead_categories').insert({name}).select().single();
+  if(error)throw new Error(error.code==='23505'?'Essa categoria já existe.':errMessage(error));
+  state.categories.push(data);
+  return data;
+}
 
 export async function moveRecords(state,ids,country,region){
   if(!db||state.demo||state.loading)throw new Error('Aguarde a conexão com o banco para mover leads.');
@@ -110,7 +151,11 @@ export async function loadAll(state){
   const error=companies.error||events.error||imports.error;
   if(error){state.demo=true;hydrateLocal(state);rerender();throw new Error(errMessage(error));}
   if(await migrateLocalToRemote(cached)){notify('Leads deste computador sincronizados com a base compartilhada.');return loadAll(state);}
+  const categories=await fetchAll('lead_categories');
+  state.socialReady=!categories.error;
+  state.categories=categories.data||[];
   state.demo=false;state.leads=(companies.data||[]).map(l=>({...l,country_code:leadCountry(l),niche:l.niche||classifyNiche(l)}));state.events=events.data||[];state.imports=(imports.data||[]).map(b=>({...b,country_code:b.country_code||'BR'}));rerender();
+  markLocalMigrationDone();
   saveLocal(state);
 }
 
@@ -133,14 +178,17 @@ export async function signOut(state){if(db)await db.auth.signOut();state.user=nu
 
 export async function updateRecords(state,ids,patch){
   if(!ids.length)return;
+  if(state.loading||state.demo||!db)throw new Error('Sem conexão com o banco. Reconecte para salvar a alteração.');
+  if(Object.keys(patch).some(k=>['contact_queue','lead_category_id'].includes(k))&&!state.socialReady)throw new Error('Atualize o banco com social-leads.sql antes de salvar.');
   const before=new Map(state.leads.filter(l=>ids.includes(l.id)).map(l=>[l.id,{...l}]));
   const now=new Date().toISOString();
-  state.leads=state.leads.map(l=>ids.includes(l.id)?{...l,...patch,updated_at:now}:l);
-  if(state.demo){saveLocal(state);rerender();notify('Alteração salva neste navegador. Execute o schema para compartilhar com outras pessoas.');return;}
-  const clean=Object.fromEntries(Object.entries(patch).filter(([k])=>['status','favorite','notes','follow_up_at','niche','state'].includes(k)));
+  const clean=Object.fromEntries(Object.entries(patch).filter(([k])=>['status','favorite','notes','follow_up_at','niche','state','contact_queue','lead_category_id'].includes(k)));
   clean.updated_at=now;
-  const {error}=await db.from('companies').update(clean).in('id',ids);
-  if(error){state.leads=state.leads.map(l=>before.has(l.id)?before.get(l.id):l);rerender();throw new Error(errMessage(error));}
+  const {data,error}=await db.from('companies').update(clean).in('id',ids).select();
+  if(error)throw new Error(errMessage(error));
+  if(data.length!==new Set(ids).size){await loadAll(state);throw new Error('Alguns leads não estão mais disponíveis. A base foi atualizada.');}
+  const saved=new Map(data.map(l=>[l.id,l]));
+  state.leads=state.leads.map(l=>saved.get(l.id)||l);
   const events=[];
   for(const id of ids){
     const old=before.get(id);if(!old)continue;
